@@ -3,6 +3,7 @@
 from keras.engine.topology import Layer
 import numpy
 from keras import backend as K
+numpy.random.seed(1337)  # for reproducibility
 
 class iLayer(Layer):
     def __init__(self, **kwargs):
