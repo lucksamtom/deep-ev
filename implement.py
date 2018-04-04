@@ -37,107 +37,11 @@ from math import sqrt
 from keras.optimizers import Adam
 import numpy
 from preprocessing import extractHourlyPower 
+from minmax import MinMaxNormalization
+from order import Order, Record
+from iLayer import iLayer
 numpy.random.seed(1337)  # for reproducibility
 
-class Record:
-    voltage = 0.0
-    current = 0.0
-    soc = 0.0
-    power_used = 0.0
-    def __init__(self,time,voltage,current,soc,power_used):
-        self.time = time
-        self.voltage = voltage
-        self.current = current
-        self.soc = soc
-        self.power_used = power_used
-
-class Order:
-    
-    #订单中详细记录
-    record_list = []
-    power_dict = {}
-    shortID = 0
-    geo_info = None
-    
-    def __init__(self,in_dict):
-        
-        self.vin = in_dict['vin']
-        self.chargeType = in_dict['chargeType']
-        self.carTypeNo = in_dict['carTypeNo']
-        self.stubId = in_dict['stubId']
-        self.stubModelNo = in_dict['stubModelNo']
-        self.startType = in_dict['startType']
-        self.stubFirmwareVersion = in_dict['stubFirmwareVersion']
-        self.stubFirmwareType = in_dict['stubFirmwareType']
-                
-        self.id = in_dict['id']
-        self.userId = in_dict['userId']
-        self.endCode = in_dict['endCode']
-        
-        #时间信息，格式化时间保存
-        self.cts = in_dict['cts']
-        self.ctl = in_dict['ctl']
-        self.timeStart = in_dict['timeStart']
-        self.timeEnd = in_dict['timeEnd']
-
-        
-        self.socStart = (in_dict['socStart'])
-        self.soc = (in_dict['soc'])
-        #用电信息，浮点保存
-        self.power = float(in_dict['power'])
-
-class iLayer(Layer):
-    def __init__(self, **kwargs):
-        # self.output_dim = output_dim
-        super(iLayer, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        initial_weight_value = numpy.random.random(input_shape[1:])
-        self.W = K.variable(initial_weight_value)
-        self.trainable_weights = [self.W]
-
-    def call(self, x, mask=None):
-        return x * self.W
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-class MyLayer(Layer):
-    def __int__(self, **kwargs):
-        super(MyLayer, self).__init__(**kwargs)
-    def build(self, input_shape):
-        input_dim = input_shape[1]
-        initial_weight_value = np.random.normal((input_dim,))
-        self.W = K.variable(initial_weight_value)
-        self.trainable_weights = [self.W]
-    def call(self, inputs, **kwargs):
-        return inputs * self.W
-    def get_output_shape(self, input_shape):
-        return input_shape
-
-class MinMaxNormalization(object):
-    """
-    MinMax Normalization-->[-1,1]
-      x=(x-min)/(max-min)
-      x=x*2-1
-    """
-    def __int__(self):
-        pass
-    def fit(self, X):
-        self._min = X.min()
-        self._max = X.max()
-        print('min', self._min, 'max', self._max)
-    def transform(self,X):
-        X = 1.*(X-self._min)/(self._max-self._min)
-        X = X*2.-1
-        return X
-    def fit_transform( self, X):
-        self.fit(X)
-        return self.transform(X)
-    def inverse_transform(self, X):
-        X = (X+1.)/2.
-        X = 1.*X*(self._max-self._min)+self._min
-        return X
 
 def geo_dict_paser(geo_dir):
 	
