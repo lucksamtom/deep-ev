@@ -37,7 +37,7 @@ from math import sqrt
 from keras.optimizers import Adam
 import numpy
 from preprocessing import extractHourlyPower 
-from minmax import MinMaxNormalization
+from utils import MinMaxNormalization, scale
 from order import Order, Record
 from iLayer import iLayer
 numpy.random.seed(1337)  # for reproducibility
@@ -96,27 +96,6 @@ def SeriesToXy_period (series, window = 73):# 3 days
 	Xy_set = Xy_set.reshape((-1,window))
 	X_train_clossness, X_train_period, y_set = Xy_set[:,-4:-1], Xy_set[:,(0,24,48)], Xy_set[:,-1]
 	return X_train_clossness.reshape(-1,3,1), X_train_period.reshape(-1,3,1), y_set.reshape(-1,1,1)
-
-# scale train and test data to [-1, 1]
-def scale(train, test):
-    train_value = train.values
-    test_value = test.values
-    temp = numpy.append(train_value,test_value)
-    # fit scaler
-    scaler = MinMaxNormalization()
-    #print(temp.reshape(-1))
-    scaler.fit(temp.reshape(-1))
-    # transform train
-    train_value = train_value.reshape(-1)
-    train_scaled = scaler.transform(train_value)
-    train_scaled = train_scaled.reshape(-1)
-    # transform test
-    test_value = test_value.reshape(-1)
-    test_scaled = scaler.transform(test_value)
-    test_scaled = test_scaled.reshape(-1)
-    train[0:] = train_scaled
-    test[0:] = test_scaled
-    return scaler, train, test
 
 def fit_period_lstm(train, test, epochs, c_conf=(3,1), p_conf=(3,1)):
 	
@@ -309,14 +288,15 @@ if __name__ == '__main__':
 	series_cache_path = './data/series_cache.pkl'
 
 	order_set = []
+	
+	'''
 	IDtoID = {}
 	loc_dict = {}
-
 	#处理地理信息
-	#(IDtoID, loc_dict) = geo_dict_paser(geo_dir)
-	#print(loc_dict)
+	(IDtoID, loc_dict) = geo_dict_paser(geo_dir)
+	print(loc_dict)
 	order_set_geo = []
-	'''
+	
 	#筛选有地理标示的订单
 	for order in order_set:
 		if order.stubId in IDtoID:
@@ -325,29 +305,6 @@ if __name__ == '__main__':
 			order_set_geo.append(order)
 	
 	print ('Order_set amount before filter is:' + str(len(order_set_geo)))
-	'''
-
-	'''
-	date = [str(i[0]) for i in sorted_power_list]
-	power = [i[1] for i in sorted_power_list]
-	print(date)
-	print(power)
-
-	#x = [time.mktime(time.strptime(str(d), "%Y%m%d%H")) for d in date]
-	x = [dt.datetime.strptime(d,'%Y%m%d%H') for d in date]
-	#plt.plot(x, power)
-	pylab.plot_date(pylab.date2num(x), power, linestyle='-')
-	xlabel(u"date & hour")
-	ylabel(u"power_used (every hour)")
-
-	grid(True)
-
-	show()
-	
-	time_save_end = time.time()
-	#print('Program cost time:'+str(time_save_end-time_save_start))
-	#for order in order_set:
-		#print(order.power_dict)
 	'''
 
 	series = extractHourlyPower(series_cache_path, USING_CACHE)

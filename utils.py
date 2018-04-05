@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import numpy
 
 class MinMaxNormalization(object):
     """
@@ -24,3 +25,28 @@ class MinMaxNormalization(object):
         X = (X+1.)/2.
         X = 1.*X*(self._max-self._min)+self._min
         return X
+
+def scale(train, test):
+
+    '''
+    scale train and test data to [-1, 1]
+
+    '''
+    train_value = train.values
+    test_value = test.values
+    temp = numpy.append(train_value,test_value)
+    # fit scaler
+    scaler = MinMaxNormalization()
+    #print(temp.reshape(-1))
+    scaler.fit(temp.reshape(-1))
+    # transform train
+    train_value = train_value.reshape(-1)
+    train_scaled = scaler.transform(train_value)
+    train_scaled = train_scaled.reshape(-1)
+    # transform test
+    test_value = test_value.reshape(-1)
+    test_scaled = scaler.transform(test_value)
+    test_scaled = test_scaled.reshape(-1)
+    train[0:] = train_scaled
+    test[0:] = test_scaled
+    return scaler, train, test
