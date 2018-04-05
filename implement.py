@@ -36,10 +36,11 @@ from math import sqrt
 #import metrics
 from keras.optimizers import Adam
 import numpy
-from preprocessing import extractHourlyPower 
+from preprocessing import extractHourlyPower, save_cache
 from utils import MinMaxNormalization, scale
 from order import Order, Record
 from iLayer import iLayer
+import copy
 numpy.random.seed(1337)  # for reproducibility
 
 
@@ -77,34 +78,53 @@ def SeriesToXy (series, window = 13):
     X_set, y_set = Xy_set[:,0:window-1], Xy_set[:,-1]
     return X_set.reshape(-1,window-1,1), y_set.reshape(-1)
 
-def SeriesToXy_ed (series, window = 13):
-    idx = window
-    Xy_set = numpy.array([])
-    while idx <= series.size:
-        Xy_set = numpy.append(Xy_set,series[idx-window:idx], axis = 0)
-        idx = idx + 1
-    Xy_set = Xy_set.reshape((-1,window))
-    X_set, y_set = Xy_set[:,0:window-1], Xy_set[:,-12:]
-    return X_set.reshape(-1,window-1,1), y_set.reshape(-1,12,1)
+def SeriesToXy_ed (train_series, test_series, window = 25):
+    X_set_list = []
+    y_set_list = []
+    
+    for series in [train_series, test_series]:
+	    idx = window
+	    Xy_set = numpy.array([])
+	    while idx <= series.size:
+	        Xy_set = numpy.append(Xy_set,series[idx-window:idx], axis = 0)
+	        idx = idx + 1
+	    Xy_set = Xy_set.reshape((-1,window))
+	    X_set, y_set = Xy_set[:,0:window-1], Xy_set[:,-12:]
+	    X_set_list.append(X_set.reshape(-1,window-1,1))
+	    y_set_list.append(y_set.reshape(-1,12,1))
 
-def SeriesToXy_period (series, window = 73):# 3 days
-	idx = window
-	Xy_set = numpy.array([])
-	while idx <= series.size:
-		Xy_set = numpy.append(Xy_set,series[idx-window:idx], axis = 0)
-		idx = idx + 1
-	Xy_set = Xy_set.reshape((-1,window))
-	X_train_clossness, X_train_period, y_set = Xy_set[:,-4:-1], Xy_set[:,(0,24,48)], Xy_set[:,-1]
-	return X_train_clossness.reshape(-1,3,1), X_train_period.reshape(-1,3,1), y_set.reshape(-1,1,1)
+    X_train = [X_set_list[0], X_set_list[0][:,12:,:]]
+    y_train = y_set_list[0]
+    X_test  = [X_set_list[1], X_set_list[1][:,12:,:]]
+    y_test  = y_set_list[1]
 
-def fit_period_lstm(train, test, epochs, c_conf=(3,1), p_conf=(3,1)):
-	
-	window = 73 #input combined output
-	X_train_clossness, X_train_period, y_train = SeriesToXy_period(train, window)
-	X_test_clossness, X_test_period, y_test = SeriesToXy_period(test, window)
+    return X_train, y_train, X_test, y_test
 
-	print('X_train_clossness, X_train_period, y_train shape:', numpy.shape(X_train_clossness), numpy.shape(X_train_period), numpy.shape(y_train))
-	print('X_test_clossness, X_test_period, y_test shape:', numpy.shape(X_test_clossness), numpy.shape(X_test_period), numpy.shape(y_test))
+def SeriesToXy_period (train_series, test_series, window = 73):# 3 days
+	X_set_list = []
+	y_set_list = []
+
+	for series in [train_series, test_series]:
+		idx = window
+		Xy_set = numpy.array([])
+		while idx <= series.size:
+			Xy_set = numpy.append(Xy_set,series[idx-window:idx], axis = 0)
+			idx = idx + 1
+		Xy_set = Xy_set.reshape((-1,window))
+		X_clossness, X_period, y_set = Xy_set[:,-4:-1], Xy_set[:,(0,24,48)], Xy_set[:,-1]
+		X_set_list.append([X_clossness.reshape(-1,3,1), X_period.reshape(-1,3,1)])
+		y_set_list.append(y_set.reshape(-1,1,1))
+
+	X_train = X_set_list[0]
+	y_train = y_set_list[0]
+	X_test  = X_set_list[1]
+	y_test  = y_set_list[1]
+	print('X_train_clossness, X_train_period, y_train shape:', numpy.shape(X_train[0]), numpy.shape(X_train[1]), numpy.shape(y_train))
+	print('X_test_clossness, X_test_period, y_test shape:', numpy.shape(X_test[0]), numpy.shape(X_test[1]), numpy.shape(y_test))
+
+	return X_train, y_train, X_test, y_test
+
+def fit_period_lstm(c_conf=(3,1), p_conf=(3,1)):
 
 	main_inputs = []
 	outputs = []
@@ -136,15 +156,7 @@ def fit_period_lstm(train, test, epochs, c_conf=(3,1), p_conf=(3,1)):
 	# Run training
 	model.compile(optimizer='adam', loss='mean_squared_error')
 	model.summary()
-	model.fit([X_train_clossness, X_train_period], y_train,
-	          batch_size=3,
-	          epochs=epochs,
-	          validation_split=0.2)
-	prediction = model.predict([X_test_clossness, X_test_period])
-	prediction = scaler.inverse_transform(prediction.reshape(-1))
-	print('prediction shape: ', numpy.shape(prediction))
-	return model, prediction
-
+	return model
 
 def fit_lstm(X, y, batch_size, nb_epoch, neurons):
 	early_stopping = EarlyStopping(monitor='val_loss', patience=3, mode='min')
@@ -187,23 +199,7 @@ def prediction_ed (test, model):
 	    idx = idx + 1
 	return Y_predict
 
-def fit_encoder_decoder(train, test, latent_dim, num_encoder_tokens, num_decoder_tokens, epochs):
-	
-	window = 25 #input combined output
-	X_train, y_train = SeriesToXy_ed(train, window)
-	X_test, y_test = SeriesToXy_ed(test, window)
-
-	decoder_input_data = X_train[:,12:,:]
-	encoder_input_data = X_train
-	decoder_target_data = y_train
-
-	X_test_decoder = X_test[:,12:,:]
-	X_test_encoder = X_test
-
-	print('X_train_encoder, X_train_encoder, y_train shape:', numpy.shape(encoder_input_data), numpy.shape(decoder_input_data), numpy.shape(decoder_target_data))
-	print('X_test_encoder, X_test_encoder, y_test shape:', numpy.shape(X_test_encoder), numpy.shape(X_test_decoder), numpy.shape(y_test))
-
-
+def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
 
 	# Define an input sequence and process it.
 	encoder_inputs = Input(shape=(None, num_encoder_tokens))
@@ -226,17 +222,8 @@ def fit_encoder_decoder(train, test, latent_dim, num_encoder_tokens, num_decoder
 	# Define the model that will turn
 	# `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
 	model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
-	early_stopping = EarlyStopping(monitor='loss', patience=5, mode='min')
-	# Run training
-	model.compile(optimizer='adam', loss='mean_squared_error')
-	model.summary()
-	model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
-	          batch_size=3,
-	          epochs=epochs,
-	          callbacks=[early_stopping])
-	prediction = prediction_ed(test, model)
-
-	return model, prediction
+	
+	return model
 
 def prediction (X_test,model):
 	test_size = numpy.shape(X_test)[0]
@@ -282,121 +269,53 @@ def build_model():
 
 	return model
 
-if __name__ == '__main__':
-	
+def main():
 	USING_CACHE = True
 	series_cache_path = './data/series_cache.pkl'
-
 	order_set = []
-	
-	'''
-	IDtoID = {}
-	loc_dict = {}
-	#处理地理信息
-	(IDtoID, loc_dict) = geo_dict_paser(geo_dir)
-	print(loc_dict)
-	order_set_geo = []
-	
-	#筛选有地理标示的订单
-	for order in order_set:
-		if order.stubId in IDtoID:
-			order.shortID = IDtoID[order.stubId]
-			order.geo_info = loc_dict[order.shortID]
-			order_set_geo.append(order)
-	
-	print ('Order_set amount before filter is:' + str(len(order_set_geo)))
-	'''
 
-	series = extractHourlyPower(series_cache_path, USING_CACHE)
+	data_series = extractHourlyPower(series_cache_path, USING_CACHE)
 	
-	training_day = 18
+	training_day = 18 # 18 for period; 20 for encoder-decoder
 	total_day = 24
-	train, test = series[:training_day*24], series[(training_day-total_day)*24:]
-	y_true = test[-72:]
-	scaler, train, test = scale(train, test)
+	train_series, test_series = data_series[:training_day*24], data_series[(training_day-total_day)*24:]
+	y_true = copy.copy(test_series[-72:].values)
+	scaler, train_series, test_series = scale(train_series, test_series)
 
+	#fetch encoder_decoder training data and model
+	#X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window = 25)
+	#model = fit_encoder_decoder(12, 1, 1)
+
+
+	X_train, y_train, X_test, y_test = SeriesToXy_period(train_series, test_series, window = 73)
+	model = fit_period_lstm()
+
+	early_stopping = EarlyStopping(monitor='loss', patience=5, mode='min')
+	# Run training
+	model.compile(optimizer='adam', loss='mean_squared_error')
+	model.summary()
+	model.fit(X_train, y_train,
+	          batch_size=3,
+	          epochs=1, 
+	          validation_split=0.2,
+	          callbacks = [early_stopping])
 	
-	#lstm_ed_model, prediction = fit_encoder_decoder(train, test, 12, 1, 1, 3000)
-	lstm_period_model, prediction = fit_period_lstm(train, test, 300, c_conf=(3,1), p_conf=(3,1))
-	#prediction = history_average(test)
+	prediction = model.predict(X_test)
 
-	#mse = mean_squared_error(y_true, prediction[-1].tolist())
-	#print('mse: '+str(mse))
-	'''
+	prediction = scaler.inverse_transform(prediction)
 
-	window = 13 #input combined output
-	X_train, y_train = SeriesToXy(train, window)
-	X_test, y_test = SeriesToXy(test, window)
+	#encoder decoder only
+	#prediction = prediction[:,-1,:]
 
-	print('X_train, y_train shape:', numpy.shape(X_train), numpy.shape(y_train))
-	print('X_test, y_test shape:', numpy.shape(X_test), numpy.shape(y_test))
-	batch_size = 1
-
-	lstm_model = fit_lstm(X_train, y_train, batch_size, 3000, 4)
-
+	prediction = prediction.reshape(-1)
+	rmse = sqrt(smet.mean_squared_error(y_true, prediction))
 	
-	#lstm_model = build_model()
-	#lstm_model.fit(X_train, y_train, epochs=6000, batch_size=3, verbose=1, shuffle=False)
-	
-	lstm_model.save('lstm_model_B.h5')  # creates a HDF5 file 'my_model.h5'
-	
-	#lstm_model = load_model('lstm_model.h5')
-	score = lstm_model.evaluate(X_test, y_test, batch_size=1)
-	print(X_test)
-	prediction = prediction(X_test, lstm_model)
-	print(prediction)
+	print('rmse: ', rmse)
+	save_cache(prediction, './data/test.pkl')
+
 	K.clear_session()# tensorflow bug
-	'''
 
-	'''
-	#predict encoder_decoder
-	
-	prediction = prediction_ed (test, lstm_ed_model)
-	#print(prediction)
-	print(numpy.shape(prediction))
-	'''
+if __name__ == '__main__':
 
-	#open and save predicted data
-	
-	with open('Y_3lstm_p5_batch3_epoch300.pkl','wb') as f:
-		pickle.dump(prediction, f, pickle.HIGHEST_PROTOCOL)
-	
-	fi = open('Y_3lstm_p5_batch3_epoch300.pkl','rb')
-	prediction = pickle.load(fi)
-	fi.close()
-	print(prediction)
-	print('rmse: ', sqrt(smet.mean_squared_error(y_true, prediction)))
-	'''
-	#predicted_series = series[(training_day-total_day)*24:][-84:]
-	#predicted_series[:]=prediction
-	#print(predicted_series)
-
-	'''
-	'''
-	#tide up predicted data
-	date = [str(i[0]) for i in sorted_power_list]
-	power = [i[1] for i in sorted_power_list]
-
-	x = [dt.datetime.strptime(d,'%Y%m%d%H') for d in date]
-	pylab.plot_date(pylab.date2num(x), power, linestyle='-', color='black')
-
-
-	data_pre = date[-72:]
-	power_pre = prediction[-2]
-	power_val_pre = val_prediction[-72:]
-	#print(data_pre)
-	#print(power_pre)
-	x_pre = [dt.datetime.strptime(d,'%Y%m%d%H') for d in data_pre]
-	pylab.plot_date(pylab.date2num(x_pre), power_pre, linestyle='-', color='red')
-	pylab.plot_date(pylab.date2num(x_pre), power_val_pre, linestyle='-', color='green')
-	print(sqrt(smet.mean_squared_error(y_true, power_pre)))
-	print(sqrt(smet.mean_squared_error(y_true, power_val_pre)))
-
-	
-	xlabel(u"date & hour")
-	ylabel(u"power_used (every hour)")
-
-	grid(True)
-
-	show()
-	'''
+	main()
+	exit(0)
