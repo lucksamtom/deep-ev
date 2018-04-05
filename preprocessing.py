@@ -14,6 +14,7 @@ from pandas import concat
 from pandas import read_csv
 from pandas import datetime
 from order import Order, Record
+import pandas as pd
 
 def get_file_name(file_dir):  
 	'''
@@ -38,9 +39,7 @@ def save_cache(order_set, saving_dir):
 
 def read_cache(cache_dir):
 	#读取Cache
-	fi = open(cache_dir,'rb')
-	cache = pickle.load(fi)
-	fi.close()
+	cache = pd.read_pickle(cache_dir)
 	print("Cache read successfully")
 	return cache
 

@@ -167,16 +167,13 @@ def fit_lstm(X, y, batch_size, nb_epoch, neurons):
 	model.fit(X, y, epochs=nb_epoch, batch_size=batch_size, verbose=1, shuffle=False, callbacks=[early_stopping])
 	return model
 
-def history_average(test):
-	history = test[0:-72].values
+def history_average(data_series):
+	history = data_series[-144:].values
 	prediction = numpy.array([])
 	temp = numpy.array([])
-	for i in range(24):
+	for i in range(72):
 		average = (history[i] + history[i+24] + history[i+48]) / 3
-		temp = numpy.append(temp, average)
-	prediction = numpy.append(prediction,temp)
-	prediction = numpy.append(prediction,temp)
-	prediction = numpy.append(prediction,temp)
+		prediction = numpy.append(prediction, average)
 	return prediction
 
 def prediction_ed (test, model):
@@ -280,13 +277,17 @@ def main():
 	total_day = 24
 	train_series, test_series = data_series[:training_day*24], data_series[(training_day-total_day)*24:]
 	y_true = copy.copy(test_series[-72:].values)
+	
+	# history_average 
+	#prediction = history_average(data_series)
+	
 	scaler, train_series, test_series = scale(train_series, test_series)
 
 	#fetch encoder_decoder training data and model
 	#X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window = 25)
 	#model = fit_encoder_decoder(12, 1, 1)
 
-
+	#fetch period training data and model
 	X_train, y_train, X_test, y_test = SeriesToXy_period(train_series, test_series, window = 73)
 	model = fit_period_lstm()
 
@@ -294,9 +295,10 @@ def main():
 	# Run training
 	model.compile(optimizer='adam', loss='mean_squared_error')
 	model.summary()
+
 	model.fit(X_train, y_train,
 	          batch_size=3,
-	          epochs=1, 
+	          epochs=300, 
 	          validation_split=0.2,
 	          callbacks = [early_stopping])
 	
@@ -304,14 +306,14 @@ def main():
 
 	prediction = scaler.inverse_transform(prediction)
 
-	#encoder decoder only
+	# encoder decoder 
 	#prediction = prediction[:,-1,:]
 
 	prediction = prediction.reshape(-1)
 	rmse = sqrt(smet.mean_squared_error(y_true, prediction))
 	
 	print('rmse: ', rmse)
-	save_cache(prediction, './data/test.pkl')
+	save_cache(prediction, './data/pre_period_batch3_lstm3_patience5.pkl')
 
 	K.clear_session()# tensorflow bug
 
