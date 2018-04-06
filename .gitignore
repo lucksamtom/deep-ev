@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+
+# Experiment result
+result/
+model/
+data/
+!series_cache.pkl
+
+# Jupyter notebook
+ipython/
+.ipynb_checkpoints/
+
+# Mac
+.DS_Store
+
+# just for now
+BJ_parse.py
+
+
