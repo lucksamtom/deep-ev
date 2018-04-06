@@ -120,9 +120,9 @@ def SeriesToXy_period(train_series, test_series, window=73):# 3 days
     X_test  = X_set_list[1]
     y_test  = y_set_list[1]
     print('X_train_clossness, X_train_period, y_train shape:',
-        numpy.shape(X_train[0]), numpy.shape(X_train[1]), numpy.shape(y_train))
+          numpy.shape(X_train[0]), numpy.shape(X_train[1]), numpy.shape(y_train))
     print('X_test_clossness, X_test_period, y_test shape:',
-        numpy.shape(X_test[0]), numpy.shape(X_test[1]), numpy.shape(y_test))
+          numpy.shape(X_test[0]), numpy.shape(X_test[1]), numpy.shape(y_test))
 
     return X_train, y_train, X_test, y_test
 
@@ -201,9 +201,6 @@ def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
     
     return model
 
-def rmse(y_true, y_pred):
-    return mean_squared_error(y_true, y_pred)**0.5
-
 def build_model():
     '''
     reference only
@@ -239,7 +236,6 @@ def build_model():
 def main():
     USING_CACHE = True
     series_cache_path = './data/series_cache.pkl'
-    order_set = []
 
     data_series = extractHourlyPower(series_cache_path, USING_CACHE)
     
@@ -254,7 +250,7 @@ def main():
     scaler, train_series, test_series = scale(train_series, test_series)
 
     #fetch encoder_decoder training data and model
-    X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window = 25)
+    X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window=25)
     model = fit_encoder_decoder(12, 1, 1)
 
     #fetch period training data and model
@@ -277,7 +273,7 @@ def main():
     prediction = scaler.inverse_transform(prediction)
 
     # encoder decoder 
-    prediction = prediction[:,-1,:]
+    prediction = prediction[:, -1,:]
 
     prediction = prediction.reshape(-1)
     rmse = sqrt(smet.mean_squared_error(y_true, prediction))
