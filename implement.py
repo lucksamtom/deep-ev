@@ -159,12 +159,9 @@ def fit_period_lstm(c_conf=(3,1), p_conf=(3,1)):
 	return model
 
 def fit_lstm(X, y, batch_size, nb_epoch, neurons):
-	early_stopping = EarlyStopping(monitor='val_loss', patience=3, mode='min')
 	model = Sequential()
-	model.add(LSTM(neurons, batch_input_shape=(batch_size, X.shape[1], X.shape[2]), stateful=True))
+	model.add(LSTM(units=vec_len, activation='tanh', return_sequences=True))
 	model.add(Dense(1))
-	model.compile(loss='mean_squared_error', optimizer='adam')
-	model.fit(X, y, epochs=nb_epoch, batch_size=batch_size, verbose=1, shuffle=False, callbacks=[early_stopping])
 	return model
 
 def history_average(data_series):
@@ -222,22 +219,13 @@ def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
 	
 	return model
 
-def prediction (X_test,model):
-	test_size = numpy.shape(X_test)[0]
-	idx = 0
-
-	Y_predict = numpy.array([])
-	while idx < test_size:
-	    pre_temp = model.predict(X_test[idx].reshape(1,12,1))
-	    pre_temp = scaler.inverse_transform(pre_temp)
-	    Y_predict = numpy.append(Y_predict,pre_temp)
-	    idx = idx + 1
-	return Y_predict
-
 def rmse(y_true,y_pred):
     return mean_squared_error(y_true, y_pred)**0.5
 
 def build_model():
+	'''
+	reference only
+	'''
 	main_inputs = []
 	main_outputs = []
 
@@ -273,23 +261,23 @@ def main():
 
 	data_series = extractHourlyPower(series_cache_path, USING_CACHE)
 	
-	training_day = 18 # 18 for period; 20 for encoder-decoder
+	training_day = 20 # 18 for period; 20 for encoder-decoder
 	total_day = 24
 	train_series, test_series = data_series[:training_day*24], data_series[(training_day-total_day)*24:]
 	y_true = copy.copy(test_series[-72:].values)
 	
-	# history_average 
+	#history_average 
 	#prediction = history_average(data_series)
 	
 	scaler, train_series, test_series = scale(train_series, test_series)
 
 	#fetch encoder_decoder training data and model
-	#X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window = 25)
-	#model = fit_encoder_decoder(12, 1, 1)
+	X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window = 25)
+	model = fit_encoder_decoder(12, 1, 1)
 
 	#fetch period training data and model
-	X_train, y_train, X_test, y_test = SeriesToXy_period(train_series, test_series, window = 73)
-	model = fit_period_lstm()
+	#X_train, y_train, X_test, y_test = SeriesToXy_period(train_series, test_series, window = 73)
+	#model = fit_period_lstm()
 
 	early_stopping = EarlyStopping(monitor='loss', patience=5, mode='min')
 	# Run training
@@ -297,7 +285,7 @@ def main():
 	model.summary()
 
 	model.fit(X_train, y_train,
-	          batch_size=3,
+	          batch_size=1,
 	          epochs=300, 
 	          validation_split=0.2,
 	          callbacks = [early_stopping])
@@ -307,13 +295,13 @@ def main():
 	prediction = scaler.inverse_transform(prediction)
 
 	# encoder decoder 
-	#prediction = prediction[:,-1,:]
+	prediction = prediction[:,-1,:]
 
 	prediction = prediction.reshape(-1)
 	rmse = sqrt(smet.mean_squared_error(y_true, prediction))
 	
 	print('rmse: ', rmse)
-	save_cache(prediction, './data/pre_period_batch3_lstm3_patience5.pkl')
+	save_cache(prediction, './data/pre_ecd-dcd_batch1_lstm1_patience5.pkl')
 
 	K.clear_session()# tensorflow bug
 
