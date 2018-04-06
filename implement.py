@@ -173,26 +173,6 @@ def history_average(data_series):
 		prediction = numpy.append(prediction, average)
 	return prediction
 
-def prediction_ed (test, model):
-	window = 25 #input combined output
-	X_test, y_test = SeriesToXy_ed(test, window)
-
-	X_test_decoder = X_test[:,12:,:]
-	X_test_encoder = X_test
-
-	test_size = numpy.shape(X_test)[0]
-	idx = 0
-
-	Y_predict = numpy.array([])
-	while idx < test_size:
-	    pre_temp = model.predict([X_test_encoder[idx].reshape(1,24,1), X_test_decoder[idx].reshape(1,12,1)])
-	    #print(scaler.inverse_transform(pre_temp))
-	    pre_temp = scaler.inverse_transform(pre_temp[0][-1][0])
-	    #print(pre_temp)
-	    Y_predict = numpy.append(Y_predict, pre_temp)
-	    idx = idx + 1
-	return Y_predict
-
 def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
 
 	# Define an input sequence and process it.
