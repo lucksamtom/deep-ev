@@ -68,15 +68,32 @@ def geo_dict_paser(geo_dir):
 
     return IDtoID, loc_dict
 
-def SeriesToXy(series, window=13):
-    idx = window
-    Xy_set = numpy.array([])
-    while idx <= series.size:
-        Xy_set = numpy.append(Xy_set, series[idx-window:idx], axis=0)
-        idx = idx + 1
-    Xy_set = Xy_set.reshape((-1, window))
-    X_set, y_set = Xy_set[:, 0:window-1], Xy_set[:, -1]
-    return X_set.reshape(-1, window-1, 1), y_set.reshape(-1)
+def SeriesToXy_vanilla(train_series, test_series, window=13):
+    X_set_list = []
+    y_set_list = []
+
+    for series in [train_series, test_series]:
+        idx = window
+        Xy_set = numpy.array([])
+        while idx <= series.size:
+            Xy_set = numpy.append(Xy_set, series[idx-window:idx], axis=0)
+            idx = idx + 1
+        Xy_set = Xy_set.reshape((-1, window))
+        X_set, y_set = Xy_set[:, 0:window-1], Xy_set[:, -1]
+        X_set_list.append(X_set.reshape(-1, window-1, 1))
+        y_set_list.append(y_set.reshape(-1,1))
+
+    X_train = X_set_list[0]
+    y_train = y_set_list[0]
+    X_test  = X_set_list[1]
+    y_test  = y_set_list[1]
+
+    print('X_train, y_train shape:',
+          numpy.shape(X_train), numpy.shape(y_train))
+    print('X_test, y_test shape:',
+          numpy.shape(X_test), numpy.shape(y_test))
+
+    return X_train, y_train, X_test, y_test
 
 def SeriesToXy_ed(train_series, test_series, window=25):
     X_set_list = []
@@ -160,10 +177,22 @@ def fit_period_lstm(c_conf=(3, 1), p_conf=(3, 1)):
     model.summary()
     return model
 
-def fit_lstm(X, y, batch_size, nb_epoch, neurons):
-    model = Sequential()
-    model.add(LSTM(units=vec_len, activation='tanh', return_sequences=True))
-    model.add(Dense(1))
+def fit_lstm(input_shape=(12,1)):
+    '''
+    vanilla lstm model
+    '''
+    main_inputs = []
+    main_outputs = []
+
+    input = Input(shape=input_shape)
+    main_inputs.append(input)
+    lstm_1 = LSTM(units=128, activation='tanh', return_sequences=True)(input)
+    lstm_4 = LSTM(units=32, activation='tanh')(lstm_1)
+    #reshape_1 = Reshape((32, input_shape[0]))(lstm_4)
+    dense = Dense(units=1, activation='tanh')(lstm_4)
+    main_outputs.append(dense)
+
+    model = Model(inputs=main_inputs, outputs=main_outputs)
     return model
 
 def history_average(data_series):
@@ -179,8 +208,9 @@ def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
 
     # Define an input sequence and process it.
     encoder_inputs = Input(shape=(None, num_encoder_tokens))
-    encoder = LSTM(latent_dim, return_state=True)
-    encoder_outputs, state_h, state_c = encoder(encoder_inputs)
+    encoder_1 = LSTM(latent_dim, return_sequences=True)(encoder_inputs)
+    encoder_2 = LSTM(latent_dim, return_state=True)
+    encoder_outputs, state_h, state_c = encoder_2(encoder_1)
     # We discard `encoder_outputs` and only keep the states.
     encoder_states = [state_h, state_c]
 
@@ -189,9 +219,10 @@ def fit_encoder_decoder(latent_dim, num_encoder_tokens, num_decoder_tokens):
     # We set up our decoder to return full output sequences,
     # and to return internal states as well. We don't use the 
     # return states in the training model, but we will use them in inference.
-    decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
-    decoder_outputs, _, _ = decoder_lstm(decoder_inputs,
+    decoder_lstm_1 = LSTM(latent_dim, return_sequences=True)(decoder_inputs,
                                          initial_state=encoder_states)
+    decoder_lstm_2 = LSTM(latent_dim, return_sequences=True, return_state=True)
+    decoder_outputs, _, _ = decoder_lstm_2(decoder_lstm_1, initial_state=encoder_states)
     decoder_dense = Dense(num_decoder_tokens, activation='tanh')
     decoder_outputs = decoder_dense(decoder_outputs)
 
@@ -249,9 +280,13 @@ def main():
     
     scaler, train_series, test_series = scale(train_series, test_series)
 
-    #fetch encoder_decoder training data and model
-    X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window=25)
-    model = fit_encoder_decoder(12, 1, 1)
+    # fetch vanilla LSTM training data and model
+    X_train, y_train, X_test, y_test = SeriesToXy_vanilla(train_series, test_series, window=25)
+    model = fit_lstm(input_shape=(24,1))
+
+    # fetch encoder_decoder training data and model
+    #X_train, y_train, X_test, y_test = SeriesToXy_ed(train_series, test_series, window=25)
+    #model = fit_encoder_decoder(12, 1, 1)
 
     #fetch period training data and model
     #X_train, y_train, X_test, y_test = SeriesToXy_period(train_series, test_series, window = 73)
@@ -264,7 +299,7 @@ def main():
 
     model.fit(X_train, y_train,
               batch_size=1,
-              epochs=300, 
+              epochs=1, 
               validation_split=0.2,
               callbacks = [early_stopping])
     
@@ -273,13 +308,13 @@ def main():
     prediction = scaler.inverse_transform(prediction)
 
     # encoder decoder 
-    prediction = prediction[:, -1,:]
+    #prediction = prediction[:, -1,:]
 
     prediction = prediction.reshape(-1)
     rmse = sqrt(smet.mean_squared_error(y_true, prediction))
     
     print('rmse: ', rmse)
-    save_cache(prediction, './data/pre_ecd-dcd_batch1_lstm1_patience5.pkl')
+    save_cache(prediction, './data/pre_vanilla_batch1_lstm128-32_patience5.pkl')
 
     K.clear_session()# tensorflow bug
 
